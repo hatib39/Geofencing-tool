@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Geofence Collector — ZTR</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root{
+    --bg: #10130f;
+    --panel: #171b15;
+    --line: #2b3126;
+    --ink: #e7ecdf;
+    --ink-dim: #8b9482;
+    --safety: #d99a2b;
+    --field: #6fae4e;
+    --danger: #c2554a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body{
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header{
+    padding: 12px 16px 10px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  header h1{
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 2px;
+    letter-spacing: 0.01em;
+  }
+  header p{
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink-dim);
+    line-height: 1.4;
+  }
+  #map{
+    flex: 1 1 auto;
+    min-height: 0;
+    filter: saturate(0.85) brightness(0.95);
+  }
+  .status-bar{
+    display: flex;
+    gap: 14px;
+    padding: 8px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .status-item{ color: var(--ink-dim); }
+  .status-item b{ color: var(--ink); font-weight: 600; }
+  .accuracy-good b{ color: var(--field); }
+  .accuracy-poor b{ color: var(--danger); }
+  .accuracy-mid b{ color: var(--safety); }
+  .controls{
+    padding: 12px 16px 16px;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .btn-row{
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  button{
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    background: #1e231b;
+    color: var(--ink);
+    padding: 12px 10px;
+    border-radius: 6px;
+    flex: 1;
+    cursor: pointer;
+  }
+  button:active{ transform: translateY(1px); }
+  button.primary{
+    background: var(--field);
+    border-color: var(--field);
+    color: #0d130a;
+  }
+  button.warn{
+    background: transparent;
+    color: var(--safety);
+    border-color: #3a3320;
+  }
+  button.danger{
+    background: transparent;
+    color: var(--danger);
+    border-color: #3a2320;
+  }
+  button:disabled{
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  .export-row{
+    display: flex;
+    gap: 8px;
+  }
+  .pointlist{
+    max-height: 90px;
+    overflow-y: auto;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 11px;
+    color: var(--ink-dim);
+    border-top: 1px solid var(--line);
+    margin-top: 10px;
+    padding-top: 8px;
+    line-height: 1.6;
+  }
+  .pointlist .pt{ color: var(--ink); }
+  .toast{
+    position: fixed;
+    bottom: 210px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e231b;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 2000;
+    white-space: nowrap;
+  }
+  .toast.show{ opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Geofence Collector</h1>
+  <p>Walk the ZTR boundary, tap Add Point at each corner. Phone GPS is ~3–5 m accurate — this is for testing the pipeline (format + logic), not final geofence precision. Swap in RTK data later without changing anything downstream.</p>
+</header>
+
+<div class="status-bar">
+  <div class="status-item">Fix: <b id="fixState">searching…</b></div>
+  <div class="status-item" id="accWrap">Accuracy: <b id="accVal">—</b></div>
+  <div class="status-item">Points: <b id="ptCount">0</b></div>
+  <div class="status-item">Area: <b id="areaVal">—</b></div>
+</div>
+
+<div id="map"></div>
+
+<div class="controls">
+  <div class="btn-row">
+    <button class="primary" id="addBtn" disabled>+ Add Point</button>
+    <button class="warn" id="undoBtn" disabled>Undo</button>
+    <button class="danger" id="resetBtn" disabled>Reset</button>
+  </div>
+  <div class="export-row">
+    <button id="closeBtn" disabled>Close Polygon</button>
+    <button id="exportGeoBtn" disabled>Export GeoJSON</button>
+    <button id="exportLocalBtn" disabled>Export Local XY</button>
+  </div>
+  <div class="pointlist" id="pointList">No points yet — tap Add Point while standing on a boundary corner.</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------- state ----------
+let map, liveMarker, accCircle, boundaryLine, boundaryPolygon;
+let points = [];          // { lat, lon, acc, t }
+let currentFix = null;    // { lat, lon, acc }
+let closed = false;
+
+// ---------- map setup ----------
+map = L.map('map', { zoomControl: true }).setView([31.5204, 74.3587], 18); // Lahore fallback center
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 21,
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+const liveIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:14px;height:14px;border-radius:50%;background:#6fae4e;border:2px solid #0d130a;box-shadow:0 0 0 4px rgba(111,174,78,0.25)"></div>',
+  iconSize: [14,14],
+  iconAnchor: [7,7]
+});
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 1600);
+}
+
+// ---------- GPS ----------
+if ('geolocation' in navigator) {
+  navigator.geolocation.watchPosition(onFix, onFixError, {
+    enableHighAccuracy: true,
+    maximumAge: 1000,
+    timeout: 15000
+  });
+} else {
+  document.getElementById('fixState').textContent = 'unsupported';
+}
+
+let centered = false;
+function onFix(pos){
+  const { latitude, longitude, accuracy } = pos.coords;
+  currentFix = { lat: latitude, lon: longitude, acc: accuracy };
+
+  document.getElementById('fixState').textContent = 'locked';
+  const accEl = document.getElementById('accVal');
+  accEl.textContent = accuracy.toFixed(1) + ' m';
+  const wrap = document.getElementById('accWrap');
+  wrap.className = 'status-item ' + (accuracy <= 6 ? 'accuracy-good' : accuracy <= 15 ? 'accuracy-mid' : 'accuracy-poor');
+
+  document.getElementById('addBtn').disabled = closed;
+
+  if (!liveMarker) {
+    liveMarker = L.marker([latitude, longitude], { icon: liveIcon }).addTo(map);
+    accCircle = L.circle([latitude, longitude], { radius: accuracy, color: '#6fae4e', weight: 1, fillOpacity: 0.08 }).addTo(map);
+  } else {
+    liveMarker.setLatLng([latitude, longitude]);
+    accCircle.setLatLng([latitude, longitude]);
+    accCircle.setRadius(accuracy);
+  }
+
+  if (!centered) {
+    map.setView([latitude, longitude], 19);
+    centered = true;
+  }
+}
+
+function onFixError(err){
+  document.getElementById('fixState').textContent = 'error: ' + err.message;
+}
+
+// ---------- boundary building ----------
+const markerIcon = (n) => L.divIcon({
+  className: '',
+  html: `<div style="width:20px;height:20px;border-radius:50%;background:#d99a2b;border:2px solid #0d130a;color:#0d130a;font:700 11px sans-serif;display:flex;align-items:center;justify-content:center">${n}</div>`,
+  iconSize: [20,20],
+  iconAnchor: [10,10]
+});
+
+function redrawBoundary(){
+  if (boundaryLine) map.removeLayer(boundaryLine);
+  if (boundaryPolygon) map.removeLayer(boundaryPolygon);
+
+  const latlngs = points.map(p => [p.lat, p.lon]);
+  if (closed && points.length >= 3) {
+    boundaryPolygon = L.polygon(latlngs, { color: '#d99a2b', weight: 2, fillOpacity: 0.1 }).addTo(map);
+  } else if (points.length >= 2) {
+    boundaryLine = L.polyline(latlngs, { color: '#d99a2b', weight: 2, dashArray: '6,6' }).addTo(map);
+  }
+}
+
+function refreshPointList(){
+  const el = document.getElementById('pointList');
+  if (points.length === 0) {
+    el.textContent = 'No points yet — tap Add Point while standing on a boundary corner.';
+    return;
+  }
+  el.innerHTML = points.map((p,i) =>
+    `<div class="pt">#${i+1}  ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}  (±${p.acc.toFixed(1)}m)</div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateButtons(){
+  document.getElementById('ptCount').textContent = points.length;
+  document.getElementById('undoBtn').disabled = points.length === 0 || closed;
+  document.getElementById('resetBtn').disabled = points.length === 0;
+  document.getElementById('closeBtn').disabled = points.length < 3 || closed;
+  document.getElementById('exportGeoBtn').disabled = !closed;
+  document.getElementById('exportLocalBtn').disabled = !closed;
+  document.getElementById('addBtn').disabled = closed || !currentFix;
+  updateArea();
+}
+
+// local ENU (meters) using first point as origin — fine for small-area geofences
+function toLocalXY(lat, lon, originLat, originLon){
+  const R = 6378137; // WGS84 equatorial radius, m
+  const dLat = (lat - originLat) * Math.PI / 180;
+  const dLon = (lon - originLon) * Math.PI / 180;
+  const x = dLon * R * Math.cos(originLat * Math.PI / 180); // east, m
+  const y = dLat * R;                                        // north, m
+  return { x, y };
+}
+
+function shoelaceArea(xy){
+  let a = 0;
+  for (let i = 0; i < xy.length; i++){
+    const [x1,y1] = xy[i];
+    const [x2,y2] = xy[(i+1) % xy.length];
+    a += (x1 * y2 - x2 * y1);
+  }
+  return Math.abs(a) / 2;
+}
+
+function updateArea(){
+  const el = document.getElementById('areaVal');
+  if (!closed || points.length < 3) { el.textContent = '—'; return; }
+  const origin = points[0];
+  const xy = points.map(p => {
+    const l = toLocalXY(p.lat, p.lon, origin.lat, origin.lon);
+    return [l.x, l.y];
+  });
+  const sqm = shoelaceArea(xy);
+  const acres = sqm / 4046.86;
+  el.textContent = sqm.toFixed(0) + ' m² (' + acres.toFixed(2) + ' acre)';
+}
+
+// ---------- button handlers ----------
+document.getElementById('addBtn').addEventListener('click', () => {
+  if (!currentFix || closed) return;
+  const p = { lat: currentFix.lat, lon: currentFix.lon, acc: currentFix.acc, t: new Date().toISOString() };
+  points.push(p);
+  L.marker([p.lat, p.lon], { icon: markerIcon(points.length) }).addTo(map);
+  redrawBoundary();
+  refreshPointList();
+  updateButtons();
+  toast('Point ' + points.length + ' added (±' + p.acc.toFixed(1) + 'm)');
+});
+
+document.getElementById('undoBtn').addEventListener('click', () => {
+  if (points.length === 0 || closed) return;
+  points.pop();
+  // rebuild markers from scratch (simplest correct approach)
+  map.eachLayer(l => { if (l instanceof L.Marker && l !== liveMarker) map.removeLayer(l); });
+  points.forEach((p,i) => L.marker([p.lat, p.lon], { icon: markerIcon(i+1) }).addTo(map));
+  redrawBoundary();
+  refreshPointList();
+  updateButtons();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (!confirm('Clear all boundary points?')) return;
+  points = [];
+  closed = false;
+  map.eachLayer(l => { if (l instanceof L.Marker && l !== liveMarker) map.removeLayer(l); });
+  if (boundaryLine) map.removeLayer(boundaryLine);
+  if (boundaryPolygon) map.removeLayer(boundaryPolygon);
+  refreshPointList();
+  updateButtons();
+});
+
+document.getElementById('closeBtn').addEventListener('click', () => {
+  if (points.length < 3) return;
+  closed = true;
+  redrawBoundary();
+  updateButtons();
+  toast('Boundary closed — ' + points.length + ' points');
+});
+
+function downloadFile(filename, content, mime){
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('exportGeoBtn').addEventListener('click', () => {
+  if (!closed) return;
+  const ring = points.map(p => [p.lon, p.lat]); // GeoJSON is [lon, lat]
+  ring.push(ring[0]); // close the ring
+  const geojson = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: {
+        name: 'ztr_geofence',
+        collected: new Date().toISOString(),
+        source: 'phone_gps_test',
+        point_count: points.length
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [ring]
+      }
+    }]
+  };
+  downloadFile('ztr_geofence.geojson', JSON.stringify(geojson, null, 2), 'application/geo+json');
+  toast('GeoJSON exported');
+});
+
+document.getElementById('exportLocalBtn').addEventListener('click', () => {
+  if (!closed) return;
+  const origin = points[0];
+  const rows = points.map((p, i) => {
+    const l = toLocalXY(p.lat, p.lon, origin.lat, origin.lon);
+    return { index: i, lat: p.lat, lon: p.lon, x_m: l.x, y_m: l.y, accuracy_m: p.acc };
+  });
+  const payload = {
+    origin: { lat: origin.lat, lon: origin.lon, note: 'local ENU origin (point #1), x=east meters, y=north meters' },
+    frame: 'local_enu_flat_earth_approx',
+    points: rows
+  };
+  downloadFile('ztr_geofence_local_xy.json', JSON.stringify(payload, null, 2), 'application/json');
+  toast('Local XY exported');
+});
+
+updateButtons();
+</script>
+</body>
+</html>
