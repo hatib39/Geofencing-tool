@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Geofence Collector — ZTR</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.js"></script>
 <style>
   :root{
     --bg: #10130f;
@@ -52,6 +52,11 @@
     min-height: 0;
     filter: saturate(0.85) brightness(0.95);
   }
+  /* dark theme tweaks for the MapLibre controls */
+  .maplibregl-ctrl-group{ background: var(--panel) !important; border: 1px solid var(--line) !important; }
+  .maplibregl-ctrl-icon{ filter: invert(0.85); }
+  .maplibregl-ctrl-attrib{ background: rgba(23,27,21,0.7) !important; }
+  .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a{ color: var(--ink-dim) !important; font-size: 10px !important; }
   .status-bar{
     display: flex;
     gap: 14px;
@@ -156,7 +161,7 @@
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
-    margin-bottom: 10px;
+    margin-bottom: 2px;
     font-size: 12px;
     color: var(--ink-dim);
   }
@@ -174,6 +179,12 @@
     flex: none;
     font-size: 11px;
     padding: 8px 10px;
+  }
+  .rotate-note{
+    font-size: 10px;
+    color: var(--ink-dim);
+    opacity: 0.75;
+    margin-bottom: 10px;
   }
   .export-row{
     display: flex;
@@ -215,7 +226,7 @@
 
 <header>
   <h1>Geofence Collector</h1>
-  <p>Walk the ZTR boundary and tap Add Point at each corner — or switch to Tap Map if you can already see the plot and want to place corners by hand. Phone GPS is ~3–5 m accurate, fine for testing the pipeline. Use Rotate to align the exported local XY frame to the plot's longest edge before swapping in RTK data.</p>
+  <p>Walk the ZTR boundary and tap Add Point at each corner — or switch to Tap Map to place corners by hand if you can already see the plot. Twist two fingers (or drag the compass icon, top-right of the map) to rotate the map view, like Google Maps — tap the compass to snap back to north. GPS is ~3–5 m accurate, fine for testing the pipeline; swap in RTK data later without changing anything downstream.</p>
 </header>
 
 <div class="status-bar">
@@ -243,11 +254,12 @@
   </div>
 
   <div class="rotate-row">
-    <span>Rotate frame:</span>
+    <span>Export axis rotation:</span>
     <input type="number" id="rotateInput" value="0" step="0.1" disabled> °
     <button id="autoAlignBtn" disabled>Auto-align longest edge</button>
     <button id="resetRotBtn" disabled>0°</button>
   </div>
+  <div class="rotate-note">Data-only — rotates the exported Local XY frame. To rotate the map you're looking at, use the compass control on the map.</div>
 
   <div class="export-row">
     <button id="closeBtn" disabled>Close Polygon</button>
@@ -261,25 +273,74 @@
 
 <script>
 // ---------- state ----------
-let map, liveMarker, accCircle, boundaryLine, boundaryPolygon;
+let map;
+let liveMarker = null;
+let ptMarkers = [];       // maplibregl.Marker[] mirroring `points`
 let points = [];          // { lat, lon, acc, manual, t }
 let currentFix = null;    // { lat, lon, acc }
 let closed = false;
 let mode = 'gps';         // 'gps' | 'map'
+let styleReady = false;
 
-// ---------- map setup ----------
-map = L.map('map', { zoomControl: true }).setView([31.5204, 74.3587], 18); // Lahore fallback center
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+// ---------- map setup (MapLibre GL JS: supports real bearing/rotation) ----------
+const osmStyle = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: [
+        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+      ],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors'
+    }
+  },
+  layers: [
+    { id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 22 }
+  ]
+};
+
+map = new maplibregl.Map({
+  container: 'map',
+  style: osmStyle,
+  center: [74.3587, 31.5204], // Lahore fallback center [lng, lat]
+  zoom: 18,
+  bearing: 0,
+  pitch: 0,
+  maxPitch: 0,     // keep a strict top-down view — only rotation, no tilt, for accurate boundary placement
   maxZoom: 21,
-  attribution: '© OpenStreetMap contributors'
-}).addTo(map);
-
-const liveIcon = L.divIcon({
-  className: '',
-  html: '<div style="width:14px;height:14px;border-radius:50%;background:#6fae4e;border:2px solid #0d130a;box-shadow:0 0 0 4px rgba(111,174,78,0.25)"></div>',
-  iconSize: [14,14],
-  iconAnchor: [7,7]
+  attributionControl: { compact: true }
 });
+
+// Compass + zoom control: drag the compass to rotate freely, tap it to reset north — same gesture language as Google Maps.
+map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true, visualizePitch: false }), 'top-right');
+
+map.on('load', () => {
+  map.touchPitch.disable(); // belt-and-braces: no accidental tilt on two-finger vertical drag
+
+  map.addSource('accuracy', { type: 'geojson', data: emptyFC() });
+  map.addLayer({ id: 'accuracy-fill', type: 'circle', source: 'accuracy',
+    paint: { 'circle-radius': 0, 'circle-color': '#6fae4e', 'circle-opacity': 0.08, 'circle-stroke-color': '#6fae4e', 'circle-stroke-width': 1 } });
+
+  map.addSource('boundary-line', { type: 'geojson', data: emptyFC() });
+  map.addLayer({ id: 'boundary-line-layer', type: 'line', source: 'boundary-line',
+    paint: { 'line-color': '#d99a2b', 'line-width': 2, 'line-dasharray': [2, 2] } });
+
+  map.addSource('boundary-fill', { type: 'geojson', data: emptyFC() });
+  map.addLayer({ id: 'boundary-fill-layer', type: 'fill', source: 'boundary-fill',
+    paint: { 'fill-color': '#d99a2b', 'fill-opacity': 0.1 } });
+  map.addLayer({ id: 'boundary-fill-outline', type: 'line', source: 'boundary-fill',
+    paint: { 'line-color': '#d99a2b', 'line-width': 2 } });
+
+  styleReady = true;
+  redrawBoundary();
+});
+
+function emptyFC(){ return { type: 'FeatureCollection', features: [] }; }
+
+map.on('click', onMapClick);
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -302,15 +363,14 @@ document.getElementById('modeMapBtn').addEventListener('click', () => setMode('m
 
 function onMapClick(e){
   if (mode !== 'map' || closed) return;
-  const p = { lat: e.latlng.lat, lon: e.latlng.lng, acc: null, manual: true, t: new Date().toISOString() };
+  const p = { lat: e.lngLat.lat, lon: e.lngLat.lng, acc: null, manual: true, t: new Date().toISOString() };
   points.push(p);
-  L.marker([p.lat, p.lon], { icon: markerIcon(points.length, true) }).addTo(map);
+  rebuildPointMarkers();
   redrawBoundary();
   refreshPointList();
   updateButtons();
   toast('Point ' + points.length + ' added (manual)');
 }
-map.on('click', onMapClick);
 
 // ---------- GPS ----------
 if ('geolocation' in navigator) {
@@ -324,6 +384,12 @@ if ('geolocation' in navigator) {
 }
 
 let centered = false;
+function metersToPixelRadiusExpr(meters, lat){
+  // exponential(base 2) interpolation over zoom exactly reproduces meters*2^zoom scaling
+  const base = meters / (156543.03392 * Math.cos(lat * Math.PI / 180));
+  return ['interpolate', ['exponential', 2], ['zoom'], 0, base, 24, base * Math.pow(2, 24)];
+}
+
 function onFix(pos){
   const { latitude, longitude, accuracy } = pos.coords;
   currentFix = { lat: latitude, lon: longitude, acc: accuracy };
@@ -337,16 +403,20 @@ function onFix(pos){
   document.getElementById('addBtn').disabled = closed || mode !== 'gps';
 
   if (!liveMarker) {
-    liveMarker = L.marker([latitude, longitude], { icon: liveIcon }).addTo(map);
-    accCircle = L.circle([latitude, longitude], { radius: accuracy, color: '#6fae4e', weight: 1, fillOpacity: 0.08 }).addTo(map);
+    const el = document.createElement('div');
+    el.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#6fae4e;border:2px solid #0d130a;box-shadow:0 0 0 4px rgba(111,174,78,0.25)';
+    liveMarker = new maplibregl.Marker({ element: el }).setLngLat([longitude, latitude]).addTo(map);
   } else {
-    liveMarker.setLatLng([latitude, longitude]);
-    accCircle.setLatLng([latitude, longitude]);
-    accCircle.setRadius(accuracy);
+    liveMarker.setLngLat([longitude, latitude]);
+  }
+
+  if (styleReady) {
+    map.getSource('accuracy').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [longitude, latitude] }, properties: {} });
+    map.setPaintProperty('accuracy-fill', 'circle-radius', metersToPixelRadiusExpr(accuracy, latitude));
   }
 
   if (!centered) {
-    map.setView([latitude, longitude], 19);
+    map.jumpTo({ center: [longitude, latitude], zoom: 19 });
     centered = true;
   }
 }
@@ -356,22 +426,31 @@ function onFixError(err){
 }
 
 // ---------- boundary building ----------
-const markerIcon = (n, manual) => L.divIcon({
-  className: '',
-  html: `<div style="width:20px;height:20px;border-radius:50%;background:${manual ? 'var(--manual)' : 'var(--safety)'};border:2px solid #0d130a;color:#0d130a;font:700 11px sans-serif;display:flex;align-items:center;justify-content:center">${n}</div>`,
-  iconSize: [20,20],
-  iconAnchor: [10,10]
-});
+function rebuildPointMarkers(){
+  ptMarkers.forEach(m => m.remove());
+  ptMarkers = [];
+  points.forEach((p, i) => {
+    const el = document.createElement('div');
+    el.style.cssText = `width:20px;height:20px;border-radius:50%;background:${p.manual ? 'var(--manual)' : 'var(--safety)'};border:2px solid #0d130a;color:#0d130a;font:700 11px sans-serif;display:flex;align-items:center;justify-content:center`;
+    el.textContent = i + 1;
+    const marker = new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map);
+    ptMarkers.push(marker);
+  });
+}
 
 function redrawBoundary(){
-  if (boundaryLine) map.removeLayer(boundaryLine);
-  if (boundaryPolygon) map.removeLayer(boundaryPolygon);
-
-  const latlngs = points.map(p => [p.lat, p.lon]);
+  if (!styleReady) return;
+  const coords = points.map(p => [p.lon, p.lat]);
   if (closed && points.length >= 3) {
-    boundaryPolygon = L.polygon(latlngs, { color: '#d99a2b', weight: 2, fillOpacity: 0.1 }).addTo(map);
+    const ring = coords.concat([coords[0]]);
+    map.getSource('boundary-line').setData(emptyFC());
+    map.getSource('boundary-fill').setData({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: {} });
   } else if (points.length >= 2) {
-    boundaryLine = L.polyline(latlngs, { color: '#d99a2b', weight: 2, dashArray: '6,6' }).addTo(map);
+    map.getSource('boundary-fill').setData(emptyFC());
+    map.getSource('boundary-line').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} });
+  } else {
+    map.getSource('boundary-line').setData(emptyFC());
+    map.getSource('boundary-fill').setData(emptyFC());
   }
 }
 
@@ -411,7 +490,7 @@ function toLocalXY(lat, lon, originLat, originLon){
   return { x, y };
 }
 
-// rotate a local x,y pair by `deg` degrees counter-clockwise
+// rotate a local x,y pair by `deg` degrees counter-clockwise (export-axis rotation only)
 function rotatePoint(x, y, deg){
   const rad = deg * Math.PI / 180;
   const cos = Math.cos(rad), sin = Math.sin(rad);
@@ -446,7 +525,7 @@ document.getElementById('addBtn').addEventListener('click', () => {
   if (!currentFix || closed || mode !== 'gps') return;
   const p = { lat: currentFix.lat, lon: currentFix.lon, acc: currentFix.acc, manual: false, t: new Date().toISOString() };
   points.push(p);
-  L.marker([p.lat, p.lon], { icon: markerIcon(points.length, false) }).addTo(map);
+  rebuildPointMarkers();
   redrawBoundary();
   refreshPointList();
   updateButtons();
@@ -456,9 +535,7 @@ document.getElementById('addBtn').addEventListener('click', () => {
 document.getElementById('undoBtn').addEventListener('click', () => {
   if (points.length === 0 || closed) return;
   points.pop();
-  // rebuild markers from scratch (simplest correct approach)
-  map.eachLayer(l => { if (l instanceof L.Marker && l !== liveMarker) map.removeLayer(l); });
-  points.forEach((p,i) => L.marker([p.lat, p.lon], { icon: markerIcon(i+1, p.manual) }).addTo(map));
+  rebuildPointMarkers();
   redrawBoundary();
   refreshPointList();
   updateButtons();
@@ -469,9 +546,8 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   points = [];
   closed = false;
   document.getElementById('rotateInput').value = 0;
-  map.eachLayer(l => { if (l instanceof L.Marker && l !== liveMarker) map.removeLayer(l); });
-  if (boundaryLine) map.removeLayer(boundaryLine);
-  if (boundaryPolygon) map.removeLayer(boundaryPolygon);
+  rebuildPointMarkers();
+  redrawBoundary();
   refreshPointList();
   updateButtons();
 });
@@ -484,7 +560,7 @@ document.getElementById('closeBtn').addEventListener('click', () => {
   toast('Boundary closed — ' + points.length + ' points');
 });
 
-// ---------- rotate frame ----------
+// ---------- export-axis rotation (data only — does not touch the map view) ----------
 document.getElementById('autoAlignBtn').addEventListener('click', () => {
   if (!closed || points.length < 2) return;
   const origin = points[0];
@@ -520,7 +596,7 @@ function downloadFile(filename, content, mime){
 
 document.getElementById('exportGeoBtn').addEventListener('click', () => {
   if (!closed) return;
-  const ring = points.map(p => [p.lon, p.lat]); // GeoJSON is [lon, lat]
+  const ring = points.map(p => [p.lon, p.lat]); // GeoJSON is [lon, lat] — always real geographic coords, never rotated
   ring.push(ring[0]); // close the ring
   const geojson = {
     type: 'FeatureCollection',
