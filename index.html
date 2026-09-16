@@ -29,41 +29,48 @@
     height: 100vh;
     overflow: hidden;
   }
+
+  /* ---------- slim top bar ---------- */
   header{
-    padding: 12px 16px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 14px;
     border-bottom: 1px solid var(--line);
     background: var(--panel);
     flex-shrink: 0;
   }
   header h1{
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
-    margin: 0 0 2px;
+    margin: 0;
     letter-spacing: 0.01em;
   }
-  header p{
-    margin: 0;
-    font-size: 12px;
+  .info-btn{
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: #1e231b;
     color: var(--ink-dim);
-    line-height: 1.4;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
   }
-  #map{
-    flex: 1 1 auto;
-    min-height: 0;
-    filter: saturate(0.85) brightness(0.95);
-  }
-  /* dark theme tweaks for the MapLibre controls */
-  .maplibregl-ctrl-group{ background: var(--panel) !important; border: 1px solid var(--line) !important; }
-  .maplibregl-ctrl-icon{ filter: invert(0.85); }
-  .maplibregl-ctrl-attrib{ background: rgba(23,27,21,0.7) !important; }
-  .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a{ color: var(--ink-dim) !important; font-size: 10px !important; }
+  .info-btn.active{ color: var(--field); border-color: var(--field); }
+
+  /* ---------- compact status strip ---------- */
   .status-bar{
     display: flex;
-    gap: 14px;
-    padding: 8px 16px;
+    gap: 12px;
+    padding: 6px 14px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
-    font-size: 12px;
+    font-size: 11px;
     flex-shrink: 0;
     flex-wrap: wrap;
   }
@@ -72,25 +79,79 @@
   .accuracy-good b{ color: var(--field); }
   .accuracy-poor b{ color: var(--danger); }
   .accuracy-mid b{ color: var(--safety); }
+
+  /* ---------- map fills all remaining space ---------- */
+  .map-wrap{
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  #map{
+    position: absolute;
+    inset: 0;
+    filter: saturate(0.85) brightness(0.95);
+  }
+  .maplibregl-ctrl-group{ background: var(--panel) !important; border: 1px solid var(--line) !important; }
+  .maplibregl-ctrl-icon{ filter: invert(0.85); }
+  .maplibregl-ctrl-attrib{ background: rgba(23,27,21,0.7) !important; }
+  .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a{ color: var(--ink-dim) !important; font-size: 10px !important; }
+
+  .info-panel{
+    position: absolute;
+    top: 10px; left: 10px; right: 10px;
+    background: rgba(20,24,17,0.94);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    line-height: 1.5;
+    z-index: 5;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .info-panel.show{ display: block; }
+  .info-panel b{ color: var(--ink); }
+
+  .toast{
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e231b;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 10;
+    white-space: nowrap;
+  }
+  .toast.show{ opacity: 1; }
+
+  /* ---------- bottom control sheet ---------- */
   .controls{
-    padding: 12px 16px 16px;
+    padding: 10px 14px 12px;
     background: var(--panel);
     border-top: 1px solid var(--line);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -6px 18px rgba(0,0,0,0.35);
     flex-shrink: 0;
   }
   .mode-row{
     display: flex;
-    align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
-  .mode-label{ font-size: 12px; color: var(--ink-dim); flex-shrink: 0; }
   .mode-btn{
     flex: 1;
     font-family: inherit;
     font-size: 12px;
     font-weight: 600;
-    padding: 8px 6px;
+    padding: 9px 6px;
     border: 1px solid var(--line);
     background: #1e231b;
     color: var(--ink-dim);
@@ -102,24 +163,31 @@
     border-color: var(--field);
     color: #0d130a;
   }
-  .mode-legend{
-    font-size: 11px;
-    color: var(--ink-dim);
-    margin-bottom: 10px;
+  .mode-btn.active .dot{ background: #0d130a; }
+  .dot{
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
   }
-  .btn-row{
+  .dot-gps{ background: var(--safety); }
+  .dot-map{ background: var(--manual); }
+
+  .btn-row, .export-row{
     display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 6px;
+    margin-bottom: 8px;
   }
   button{
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     border: 1px solid var(--line);
     background: #1e231b;
     color: var(--ink);
-    padding: 12px 10px;
+    padding: 10px 6px;
     border-radius: 6px;
     flex: 1;
     cursor: pointer;
@@ -149,127 +217,140 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--ink-dim);
     border: 1px dashed var(--line);
     border-radius: 6px;
-    padding: 12px 10px;
+    padding: 10px 6px;
     text-align: center;
   }
+
+  /* ---------- collapsible sections ---------- */
+  details.disclosure{
+    border-top: 1px solid var(--line);
+    padding-top: 8px;
+    margin-top: 2px;
+  }
+  details.disclosure summary{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--ink-dim);
+    cursor: pointer;
+    list-style: none;
+    padding: 2px 0;
+  }
+  details.disclosure summary::-webkit-details-marker{ display: none; }
+  details.disclosure summary b{ color: var(--ink); }
+  details.disclosure .chev{ color: var(--ink-dim); transition: transform 0.15s ease; }
+  details.disclosure[open] .chev{ transform: rotate(90deg); }
+  details.disclosure .disclosure-body{ padding-top: 8px; }
+
   .rotate-row{
     display: flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
-    margin-bottom: 2px;
     font-size: 12px;
     color: var(--ink-dim);
   }
   .rotate-row input[type=number]{
-    width: 68px;
+    width: 64px;
     font-family: inherit;
     font-size: 12px;
     background: #1e231b;
     border: 1px solid var(--line);
     color: var(--ink);
     border-radius: 6px;
-    padding: 8px;
+    padding: 7px;
   }
   .rotate-row button{
     flex: none;
     font-size: 11px;
-    padding: 8px 10px;
+    padding: 7px 9px;
   }
   .rotate-note{
     font-size: 10px;
     color: var(--ink-dim);
     opacity: 0.75;
-    margin-bottom: 10px;
+    margin: 6px 0 0;
   }
-  .export-row{
-    display: flex;
-    gap: 8px;
-  }
+
   .pointlist{
-    max-height: 90px;
+    max-height: 100px;
     overflow-y: auto;
     font-family: "SF Mono", Consolas, monospace;
     font-size: 11px;
     color: var(--ink-dim);
-    border-top: 1px solid var(--line);
-    margin-top: 10px;
-    padding-top: 8px;
     line-height: 1.6;
   }
   .pointlist .pt{ color: var(--ink); }
-  .toast{
-    position: fixed;
-    bottom: 210px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1e231b;
-    border: 1px solid var(--line);
-    color: var(--ink);
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 12px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s;
-    z-index: 2000;
-    white-space: nowrap;
-  }
-  .toast.show{ opacity: 1; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>Geofence Collector</h1>
-  <p>Walk the ZTR boundary and tap Add Point at each corner — or switch to Tap Map to place corners by hand if you can already see the plot. Twist two fingers (or drag the compass icon, top-right of the map) to rotate the map view, like Google Maps — tap the compass to snap back to north. GPS is ~3–5 m accurate, fine for testing the pipeline; swap in RTK data later without changing anything downstream.</p>
+  <button class="info-btn" id="infoToggleBtn" aria-label="Instructions">ⓘ</button>
 </header>
 
 <div class="status-bar">
-  <div class="status-item">Fix: <b id="fixState">searching…</b></div>
-  <div class="status-item" id="accWrap">Accuracy: <b id="accVal">—</b></div>
-  <div class="status-item">Points: <b id="ptCount">0</b></div>
-  <div class="status-item">Area: <b id="areaVal">—</b></div>
+  <div class="status-item">🛰 <b id="fixState">searching…</b></div>
+  <div class="status-item" id="accWrap">🎯 <b id="accVal">—</b></div>
+  <div class="status-item">📍 <b id="ptCount">0</b></div>
+  <div class="status-item">📐 <b id="areaVal">—</b></div>
 </div>
 
-<div id="map"></div>
+<div class="map-wrap">
+  <div id="map"></div>
+
+  <div class="info-panel" id="infoPanel">
+    Walk the ZTR boundary and tap <b>Add Point</b> at each corner — or switch to <b>Tap Map</b> to place corners by hand if you can already see the plot. Twist two fingers (or drag the compass icon, top-right of the map) to rotate the map view, like Google Maps — tap the compass to snap back to north. GPS is ~3–5 m accurate, fine for testing the pipeline; swap in RTK data later without changing anything downstream.
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
 
 <div class="controls">
   <div class="mode-row">
-    <span class="mode-label">Input:</span>
-    <button class="mode-btn active" id="modeGpsBtn">📍 GPS Walk</button>
-    <button class="mode-btn" id="modeMapBtn">🗺️ Tap Map</button>
+    <button class="mode-btn active" id="modeGpsBtn"><span class="dot dot-gps"></span>GPS Walk</button>
+    <button class="mode-btn" id="modeMapBtn"><span class="dot dot-map"></span>Tap Map</button>
   </div>
-  <div class="mode-legend">🟠 GPS point &nbsp;&nbsp; 🔵 Manual (map-tap) point</div>
 
   <div class="btn-row">
     <button class="primary" id="addBtn" disabled>+ Add Point</button>
-    <div class="map-hint" id="mapHint" style="display:none;">Tap anywhere on the map to add a point</div>
+    <div class="map-hint" id="mapHint" style="display:none;">Tap the map to add a point</div>
     <button class="warn" id="undoBtn" disabled>Undo</button>
     <button class="danger" id="resetBtn" disabled>Reset</button>
   </div>
-
-  <div class="rotate-row">
-    <span>Export axis rotation:</span>
-    <input type="number" id="rotateInput" value="0" step="0.1" disabled> °
-    <button id="autoAlignBtn" disabled>Auto-align longest edge</button>
-    <button id="resetRotBtn" disabled>0°</button>
-  </div>
-  <div class="rotate-note">Data-only — rotates the exported Local XY frame. To rotate the map you're looking at, use the compass control on the map.</div>
 
   <div class="export-row">
     <button id="closeBtn" disabled>Close Polygon</button>
     <button id="exportGeoBtn" disabled>Export GeoJSON</button>
     <button id="exportLocalBtn" disabled>Export Local XY</button>
   </div>
-  <div class="pointlist" id="pointList">No points yet — tap Add Point (GPS mode) or tap the map (Map mode) at a boundary corner.</div>
-</div>
 
-<div class="toast" id="toast"></div>
+  <details class="disclosure">
+    <summary><span>⚙ Export axis rotation</span><span class="chev">›</span></summary>
+    <div class="disclosure-body">
+      <div class="rotate-row">
+        <span>Rotate:</span>
+        <input type="number" id="rotateInput" value="0" step="0.1" disabled> °
+        <button id="autoAlignBtn" disabled>Auto-align longest edge</button>
+        <button id="resetRotBtn" disabled>0°</button>
+      </div>
+      <p class="rotate-note">Data-only — rotates the exported Local XY frame. To rotate the map you're looking at, use the compass control on the map instead.</p>
+    </div>
+  </details>
+
+  <details class="disclosure">
+    <summary><span>Points <b id="ptCountInline">0</b></span><span class="chev">›</span></summary>
+    <div class="disclosure-body">
+      <div class="pointlist" id="pointList">No points yet.</div>
+    </div>
+  </details>
+</div>
 
 <script>
 // ---------- state ----------
@@ -281,6 +362,12 @@ let currentFix = null;    // { lat, lon, acc }
 let closed = false;
 let mode = 'gps';         // 'gps' | 'map'
 let styleReady = false;
+
+// ---------- info overlay ----------
+document.getElementById('infoToggleBtn').addEventListener('click', () => {
+  document.getElementById('infoPanel').classList.toggle('show');
+  document.getElementById('infoToggleBtn').classList.toggle('active');
+});
 
 // ---------- map setup (MapLibre GL JS: supports real bearing/rotation) ----------
 const osmStyle = {
@@ -341,6 +428,7 @@ map.on('load', () => {
 function emptyFC(){ return { type: 'FeatureCollection', features: [] }; }
 
 map.on('click', onMapClick);
+map.on('click', () => document.getElementById('infoPanel').classList.remove('show'));
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -457,7 +545,7 @@ function redrawBoundary(){
 function refreshPointList(){
   const el = document.getElementById('pointList');
   if (points.length === 0) {
-    el.textContent = 'No points yet — tap Add Point (GPS mode) or tap the map (Map mode) at a boundary corner.';
+    el.textContent = 'No points yet.';
     return;
   }
   el.innerHTML = points.map((p,i) =>
@@ -468,6 +556,7 @@ function refreshPointList(){
 
 function updateButtons(){
   document.getElementById('ptCount').textContent = points.length;
+  document.getElementById('ptCountInline').textContent = points.length;
   document.getElementById('undoBtn').disabled = points.length === 0 || closed;
   document.getElementById('resetBtn').disabled = points.length === 0;
   document.getElementById('closeBtn').disabled = points.length < 3 || closed;
