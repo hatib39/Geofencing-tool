@@ -13,10 +13,10 @@
     --line: #2b3126;
     --ink: #e7ecdf;
     --ink-dim: #8b9482;
-    --safety: #d99a2b;
-    --field: #6fae4e;
-    --danger: #c2554a;
-    --manual: #5c9fd6;
+    --safety: #d99a2b;   /* outer boundary / geofence */
+    --field: #6fae4e;    /* live GPS fix / mowable */
+    --danger: #c2554a;   /* no-go zone (hole) */
+    --manual: #5c9fd6;   /* manually tapped point */
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -89,29 +89,58 @@
   #map{
     position: absolute;
     inset: 0;
-    filter: saturate(0.85) brightness(0.95);
   }
   .maplibregl-ctrl-group{ background: var(--panel) !important; border: 1px solid var(--line) !important; }
   .maplibregl-ctrl-icon{ filter: invert(0.85); }
   .maplibregl-ctrl-attrib{ background: rgba(23,27,21,0.7) !important; }
   .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib a{ color: var(--ink-dim) !important; font-size: 10px !important; }
 
+  /* floating basemap toggle over the map */
+  .basemap-toggle{
+    position: absolute;
+    top: 10px; left: 10px;
+    z-index: 6;
+    display: flex;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  }
+  .basemap-toggle button{
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 7px 11px;
+    border: none;
+    background: rgba(20,24,17,0.92);
+    color: var(--ink-dim);
+    cursor: pointer;
+    flex: none;
+    border-radius: 0;
+  }
+  .basemap-toggle button.active{ background: var(--field); color: #0d130a; }
+
   .info-panel{
     position: absolute;
-    top: 10px; left: 10px; right: 10px;
-    background: rgba(20,24,17,0.94);
+    top: 52px; left: 10px; right: 10px;
+    background: rgba(20,24,17,0.96);
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 12px 14px;
     font-size: 12px;
     color: var(--ink-dim);
-    line-height: 1.5;
+    line-height: 1.55;
     z-index: 5;
     display: none;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    max-height: 70%;
+    overflow-y: auto;
   }
   .info-panel.show{ display: block; }
   .info-panel b{ color: var(--ink); }
+  .info-panel code{ color: var(--field); font-family: "SF Mono", Consolas, monospace; font-size: 11px; }
+  .info-panel .legend{ display:flex; align-items:center; gap:6px; margin-top:6px; }
+  .info-panel .sw{ width:11px; height:11px; border-radius:3px; flex:none; }
 
   .toast{
     position: absolute;
@@ -129,8 +158,10 @@
     transition: opacity 0.2s;
     z-index: 10;
     white-space: nowrap;
+    max-width: 90%;
   }
   .toast.show{ opacity: 1; }
+  .toast.warn{ border-color: var(--safety); color: var(--safety); }
 
   /* ---------- bottom control sheet ---------- */
   .controls{
@@ -140,6 +171,8 @@
     border-radius: 14px 14px 0 0;
     box-shadow: 0 -6px 18px rgba(0,0,0,0.35);
     flex-shrink: 0;
+    max-height: 52vh;
+    overflow-y: auto;
   }
   .mode-row{
     display: flex;
@@ -175,6 +208,46 @@
   .dot-gps{ background: var(--safety); }
   .dot-map{ background: var(--manual); }
 
+  /* ---------- feature (boundary + zones) chip bar ---------- */
+  .feature-bar{
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 8px 0;
+    margin-bottom: 6px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .chip{
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: #1e231b;
+    color: var(--ink-dim);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+  }
+  .chip .cdot{ width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .chip.boundary .cdot{ background: var(--safety); }
+  .chip.zone .cdot{ background: var(--danger); }
+  .chip.active{ border-color: var(--ink); color: var(--ink); background: #232a1e; }
+  .chip.done{ opacity: 0.85; }
+  .chip .x{ color: var(--ink-dim); font-weight: 700; margin-left: 2px; }
+  .chip-add{
+    font-family: inherit; font-size: 11px; font-weight: 600;
+    padding: 6px 10px; border-radius: 20px;
+    border: 1px dashed var(--line); background: transparent; color: var(--ink-dim);
+    cursor: pointer; flex: none;
+  }
+  .chip-add:disabled{ opacity: 0.35; cursor: not-allowed; }
+
   .btn-row, .export-row{
     display: flex;
     gap: 6px;
@@ -193,25 +266,11 @@
     cursor: pointer;
   }
   button:active{ transform: translateY(1px); }
-  button.primary{
-    background: var(--field);
-    border-color: var(--field);
-    color: #0d130a;
-  }
-  button.warn{
-    background: transparent;
-    color: var(--safety);
-    border-color: #3a3320;
-  }
-  button.danger{
-    background: transparent;
-    color: var(--danger);
-    border-color: #3a2320;
-  }
-  button:disabled{
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
+  button.primary{ background: var(--field); border-color: var(--field); color: #0d130a; }
+  button.accent{ background: var(--safety); border-color: var(--safety); color: #0d130a; }
+  button.warn{ background: transparent; color: var(--safety); border-color: #3a3320; }
+  button.danger{ background: transparent; color: var(--danger); border-color: #3a2320; }
+  button:disabled{ opacity: 0.35; cursor: not-allowed; }
   .map-hint{
     flex: 1;
     display: flex;
@@ -224,6 +283,22 @@
     padding: 10px 6px;
     text-align: center;
   }
+
+  /* ---------- validation banner ---------- */
+  .validation{
+    font-size: 11px;
+    line-height: 1.5;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    background: #1a1f15;
+    color: var(--ink-dim);
+  }
+  .validation.ok{ border-color: #33422a; color: var(--field); }
+  .validation.err{ border-color: #4a2a26; color: var(--danger); }
+  .validation.warn{ border-color: #43391f; color: var(--safety); }
+  .validation ul{ margin: 4px 0 0; padding-left: 16px; }
 
   /* ---------- collapsible sections ---------- */
   details.disclosure{
@@ -265,20 +340,11 @@
     border-radius: 6px;
     padding: 7px;
   }
-  .rotate-row button{
-    flex: none;
-    font-size: 11px;
-    padding: 7px 9px;
-  }
-  .rotate-note{
-    font-size: 10px;
-    color: var(--ink-dim);
-    opacity: 0.75;
-    margin: 6px 0 0;
-  }
+  .rotate-row button{ flex: none; font-size: 11px; padding: 7px 9px; }
+  .rotate-note{ font-size: 10px; color: var(--ink-dim); opacity: 0.75; margin: 6px 0 0; }
 
   .pointlist{
-    max-height: 100px;
+    max-height: 120px;
     overflow-y: auto;
     font-family: "SF Mono", Consolas, monospace;
     font-size: 11px;
@@ -286,27 +352,42 @@
     line-height: 1.6;
   }
   .pointlist .pt{ color: var(--ink); }
+  .pointlist .hd{ color: var(--safety); margin-top: 4px; }
+  .pointlist .hd.zone{ color: var(--danger); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Geofence Collector</h1>
+  <h1>Geofence Collector — ZTR</h1>
   <button class="info-btn" id="infoToggleBtn" aria-label="Instructions">ⓘ</button>
 </header>
 
 <div class="status-bar">
   <div class="status-item">🛰 <b id="fixState">searching…</b></div>
   <div class="status-item" id="accWrap">🎯 <b id="accVal">—</b></div>
-  <div class="status-item">📍 <b id="ptCount">0</b></div>
   <div class="status-item">📐 <b id="areaVal">—</b></div>
+  <div class="status-item">⛔ <b id="zoneVal">0</b></div>
 </div>
 
 <div class="map-wrap">
   <div id="map"></div>
 
+  <div class="basemap-toggle" id="basemapToggle">
+    <button data-base="sat" class="active">Satellite</button>
+    <button data-base="street">Streets</button>
+  </div>
+
   <div class="info-panel" id="infoPanel">
-    Walk the ZTR boundary and tap <b>Add Point</b> at each corner — or switch to <b>Tap Map</b> to place corners by hand if you can already see the plot. Twist two fingers (or drag the compass icon, top-right of the map) to rotate the map view, like Google Maps — tap the compass to snap back to north. GPS is ~3–5 m accurate, fine for testing the pipeline; swap in RTK data later without changing anything downstream.
+    <b>What this does.</b> Capture a lawn boundary and any no-go zones, then export them in the exact frame the ZTR coverage planner reads.<br><br>
+    <b>1 · Draw the boundary.</b> Walk the edge and tap <b>Add point</b> at each corner (GPS Walk), or switch to <b>Tap map</b> and place corners over the satellite image. Tap <b>Close boundary</b> when done.<br>
+    <b>2 · Add no-go zones (optional).</b> Tap <b>+ No-go zone</b> and outline anything the mower must avoid — a tree, flower bed, pond. These become <code>holes</code> in the plan.<br>
+    <b>3 · Export.</b> <code>lawn.yaml</code> drops straight into the planner; GeoJSON keeps true lat/lon; Local XY is the flat metric frame.<br><br>
+    <b>Satellite is a backdrop, not the source of truth.</b> Consumer GPS is ~3–5&nbsp;m and aerial imagery can sit several metres off. For the real machine, capture with the ZTR's RTK receiver — the same export works, just far more precise.<br>
+    <div class="legend"><span class="sw" style="background:var(--safety)"></span> Boundary</div>
+    <div class="legend"><span class="sw" style="background:var(--danger)"></span> No-go zone (hole)</div>
+    <div class="legend"><span class="sw" style="background:var(--field)"></span> Live GPS fix</div>
+    <div class="legend"><span class="sw" style="background:var(--manual)"></span> Manually tapped point</div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -318,29 +399,37 @@
     <button class="mode-btn" id="modeMapBtn"><span class="dot dot-map"></span>Tap Map</button>
   </div>
 
+  <div class="feature-bar" id="featureBar"><!-- chips injected here --></div>
+
   <div class="btn-row">
-    <button class="primary" id="addBtn" disabled>+ Add Point</button>
+    <button class="primary" id="addBtn" disabled>+ Add point</button>
     <div class="map-hint" id="mapHint" style="display:none;">Tap the map to add a point</div>
     <button class="warn" id="undoBtn" disabled>Undo</button>
     <button class="danger" id="resetBtn" disabled>Reset</button>
   </div>
 
+  <div class="btn-row">
+    <button class="accent" id="closeBtn" disabled>Close boundary</button>
+  </div>
+
+  <div class="validation" id="validation">Draw at least 3 boundary corners to begin.</div>
+
   <div class="export-row">
-    <button id="closeBtn" disabled>Close Polygon</button>
-    <button id="exportGeoBtn" disabled>Export GeoJSON</button>
-    <button id="exportLocalBtn" disabled>Export Local XY</button>
+    <button class="primary" id="exportYamlBtn" disabled>Export lawn.yaml</button>
+    <button id="exportGeoBtn" disabled>GeoJSON</button>
+    <button id="exportLocalBtn" disabled>Local XY</button>
   </div>
 
   <details class="disclosure">
-    <summary><span>⚙ Export axis rotation</span><span class="chev">›</span></summary>
+    <summary><span>⚙ Mowing direction (export axis)</span><span class="chev">›</span></summary>
     <div class="disclosure-body">
       <div class="rotate-row">
         <span>Rotate:</span>
         <input type="number" id="rotateInput" value="0" step="0.1" disabled> °
-        <button id="autoAlignBtn" disabled>Auto-align longest edge</button>
+        <button id="autoAlignBtn" disabled>Align longest edge</button>
         <button id="resetRotBtn" disabled>0°</button>
       </div>
-      <p class="rotate-note">Data-only — rotates the exported Local XY frame. To rotate the map you're looking at, use the compass control on the map instead.</p>
+      <p class="rotate-note">Rotates the exported metric frame only — the map view is untouched. Aligning the longest edge to an axis lets the planner run swaths along it, which usually means fewer end-of-row turns.</p>
     </div>
   </details>
 
@@ -353,15 +442,36 @@
 </div>
 
 <script>
+// ---------- geographic + rotation frame constants ----------
+// Local frame is a flat-earth ENU tangent plane. Origin = boundary point #1.
+// x = east (m), y = north (m). Valid for small sites (sub-km); use RTK/UTM for larger.
+
 // ---------- state ----------
 let map;
 let liveMarker = null;
-let ptMarkers = [];       // maplibregl.Marker[] mirroring `points`
-let points = [];          // { lat, lon, acc, manual, t }
-let currentFix = null;    // { lat, lon, acc }
-let closed = false;
-let mode = 'gps';         // 'gps' | 'map'
+let vertexMarkers = [];       // maplibregl.Marker[] mirroring the OPEN feature's points
+
+// A feature = one ring. The lawn has exactly one boundary and zero+ no-go zones.
+let boundary = { points: [], closed: false };   // point: { lat, lon, acc, manual, t }
+let zones = [];                                  // [{ points:[...], closed:bool }]
+let target = 'boundary';                         // 'boundary' | 'zone'
+let activeZone = -1;                             // index into zones when target==='zone'
+
+let currentFix = null;        // { lat, lon, acc }
+let mode = 'gps';             // 'gps' | 'map'
 let styleReady = false;
+let base = 'sat';             // 'sat' | 'street'
+
+// ---------- helpers to reach the feature currently being edited ----------
+function openFeature(){
+  if (target === 'boundary' && !boundary.closed) return boundary;
+  if (target === 'zone' && activeZone >= 0 && zones[activeZone] && !zones[activeZone].closed) return zones[activeZone];
+  return null;
+}
+function targetLabel(){
+  if (target === 'zone' && activeZone >= 0) return 'zone ' + (activeZone + 1);
+  return 'boundary';
+}
 
 // ---------- info overlay ----------
 document.getElementById('infoToggleBtn').addEventListener('click', () => {
@@ -369,11 +479,21 @@ document.getElementById('infoToggleBtn').addEventListener('click', () => {
   document.getElementById('infoToggleBtn').classList.toggle('active');
 });
 
-// ---------- map setup (MapLibre GL JS: supports real bearing/rotation) ----------
-const osmStyle = {
+// ---------- map setup (MapLibre GL JS: real bearing/rotation, top-down only) ----------
+// Two raster basemaps. Satellite (Esri World Imagery) is the default because a lawn edge
+// is invisible on a street map. Esri permits tracing for evaluation; license commercial
+// imagery (e.g. Mapbox) for a shipped product, or rely on RTK-walked coordinates.
+const style = {
   version: 8,
   sources: {
-    osm: {
+    sat: {
+      type: 'raster',
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      maxzoom: 22,
+      attribution: 'Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+    },
+    street: {
       type: 'raster',
       tiles: [
         'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -381,48 +501,57 @@ const osmStyle = {
         'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
       ],
       tileSize: 256,
+      maxzoom: 19,
       attribution: '© OpenStreetMap contributors'
     }
   },
   layers: [
-    { id: 'osm-layer', type: 'raster', source: 'osm', minzoom: 0, maxzoom: 22 }
+    { id: 'sat-layer', type: 'raster', source: 'sat', layout: { visibility: 'visible' } },
+    { id: 'street-layer', type: 'raster', source: 'street', layout: { visibility: 'none' } }
   ]
 };
 
 map = new maplibregl.Map({
   container: 'map',
-  style: osmStyle,
-  center: [74.3587, 31.5204], // Lahore fallback center [lng, lat]
+  style: style,
+  center: [74.3587, 31.5204], // Lahore fallback [lng, lat]
   zoom: 18,
   bearing: 0,
   pitch: 0,
-  maxPitch: 0,     // keep a strict top-down view — only rotation, no tilt, for accurate boundary placement
-  maxZoom: 21,
+  maxPitch: 0,     // strict top-down — rotation only, no tilt, for accurate corner placement
+  maxZoom: 22,
   attributionControl: { compact: true }
 });
-
-// Compass + zoom control: drag the compass to rotate freely, tap it to reset north — same gesture language as Google Maps.
 map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true, visualizePitch: false }), 'top-right');
 
 map.on('load', () => {
-  map.touchPitch.disable(); // belt-and-braces: no accidental tilt on two-finger vertical drag
+  map.touchPitch.disable();
 
   map.addSource('accuracy', { type: 'geojson', data: emptyFC() });
   map.addLayer({ id: 'accuracy-fill', type: 'circle', source: 'accuracy',
     paint: { 'circle-radius': 0, 'circle-color': '#6fae4e', 'circle-opacity': 0.08, 'circle-stroke-color': '#6fae4e', 'circle-stroke-width': 1 } });
 
-  map.addSource('boundary-line', { type: 'geojson', data: emptyFC() });
-  map.addLayer({ id: 'boundary-line-layer', type: 'line', source: 'boundary-line',
-    paint: { 'line-color': '#d99a2b', 'line-width': 2, 'line-dasharray': [2, 2] } });
-
+  // closed boundary polygon
   map.addSource('boundary-fill', { type: 'geojson', data: emptyFC() });
   map.addLayer({ id: 'boundary-fill-layer', type: 'fill', source: 'boundary-fill',
     paint: { 'fill-color': '#d99a2b', 'fill-opacity': 0.1 } });
   map.addLayer({ id: 'boundary-fill-outline', type: 'line', source: 'boundary-fill',
     paint: { 'line-color': '#d99a2b', 'line-width': 2 } });
 
+  // closed no-go zones
+  map.addSource('zones-fill', { type: 'geojson', data: emptyFC() });
+  map.addLayer({ id: 'zones-fill-layer', type: 'fill', source: 'zones-fill',
+    paint: { 'fill-color': '#c2554a', 'fill-opacity': 0.28 } });
+  map.addLayer({ id: 'zones-fill-outline', type: 'line', source: 'zones-fill',
+    paint: { 'line-color': '#c2554a', 'line-width': 2 } });
+
+  // in-progress open feature (dashed line, colored by target)
+  map.addSource('active-line', { type: 'geojson', data: emptyFC() });
+  map.addLayer({ id: 'active-line-layer', type: 'line', source: 'active-line',
+    paint: { 'line-color': ['case', ['==', ['get', 'kind'], 'zone'], '#c2554a', '#d99a2b'], 'line-width': 2, 'line-dasharray': [2, 2] } });
+
   styleReady = true;
-  redrawBoundary();
+  redraw();
 });
 
 function emptyFC(){ return { type: 'FeatureCollection', features: [] }; }
@@ -430,52 +559,57 @@ function emptyFC(){ return { type: 'FeatureCollection', features: [] }; }
 map.on('click', onMapClick);
 map.on('click', () => document.getElementById('infoPanel').classList.remove('show'));
 
-function toast(msg){
+function toast(msg, warn){
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(()=> t.classList.remove('show'), 1600);
+  t.className = 'toast show' + (warn ? ' warn' : '');
+  setTimeout(() => t.classList.remove('show'), 1900);
 }
 
-// ---------- input mode (GPS walk vs manual map tap) ----------
+// ---------- basemap toggle ----------
+document.getElementById('basemapToggle').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  base = btn.dataset.base;
+  [...document.querySelectorAll('#basemapToggle button')].forEach(b => b.classList.toggle('active', b === btn));
+  if (styleReady) {
+    map.setLayoutProperty('sat-layer', 'visibility', base === 'sat' ? 'visible' : 'none');
+    map.setLayoutProperty('street-layer', 'visibility', base === 'street' ? 'visible' : 'none');
+  }
+});
+
+// ---------- input mode ----------
 function setMode(newMode){
   mode = newMode;
   document.getElementById('modeGpsBtn').classList.toggle('active', mode === 'gps');
   document.getElementById('modeMapBtn').classList.toggle('active', mode === 'map');
   document.getElementById('addBtn').style.display = mode === 'gps' ? '' : 'none';
   document.getElementById('mapHint').style.display = mode === 'map' ? '' : 'none';
-  updateButtons();
+  updateUI();
 }
 document.getElementById('modeGpsBtn').addEventListener('click', () => setMode('gps'));
 document.getElementById('modeMapBtn').addEventListener('click', () => setMode('map'));
 
 function onMapClick(e){
-  if (mode !== 'map' || closed) return;
-  const p = { lat: e.lngLat.lat, lon: e.lngLat.lng, acc: null, manual: true, t: new Date().toISOString() };
-  points.push(p);
-  rebuildPointMarkers();
-  redrawBoundary();
-  refreshPointList();
-  updateButtons();
-  toast('Point ' + points.length + ' added (manual)');
+  if (mode !== 'map') return;
+  const feat = openFeature();
+  if (!feat) return;
+  feat.points.push({ lat: e.lngLat.lat, lon: e.lngLat.lng, acc: null, manual: true, t: new Date().toISOString() });
+  refreshAll();
+  toast(feat.points.length + ' pts on ' + targetLabel() + ' (manual)');
 }
 
 // ---------- GPS ----------
 if ('geolocation' in navigator) {
-  navigator.geolocation.watchPosition(onFix, onFixError, {
-    enableHighAccuracy: true,
-    maximumAge: 1000,
-    timeout: 15000
-  });
+  navigator.geolocation.watchPosition(onFix, onFixError, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
 } else {
   document.getElementById('fixState').textContent = 'unsupported';
 }
 
 let centered = false;
 function metersToPixelRadiusExpr(meters, lat){
-  // exponential(base 2) interpolation over zoom exactly reproduces meters*2^zoom scaling
-  const base = meters / (156543.03392 * Math.cos(lat * Math.PI / 180));
-  return ['interpolate', ['exponential', 2], ['zoom'], 0, base, 24, base * Math.pow(2, 24)];
+  const b = meters / (156543.03392 * Math.cos(lat * Math.PI / 180));
+  return ['interpolate', ['exponential', 2], ['zoom'], 0, b, 24, b * Math.pow(2, 24)];
 }
 
 function onFix(pos){
@@ -485,10 +619,7 @@ function onFix(pos){
   document.getElementById('fixState').textContent = 'locked';
   const accEl = document.getElementById('accVal');
   accEl.textContent = accuracy.toFixed(1) + ' m';
-  const wrap = document.getElementById('accWrap');
-  wrap.className = 'status-item ' + (accuracy <= 6 ? 'accuracy-good' : accuracy <= 15 ? 'accuracy-mid' : 'accuracy-poor');
-
-  document.getElementById('addBtn').disabled = closed || mode !== 'gps';
+  document.getElementById('accWrap').className = 'status-item ' + (accuracy <= 6 ? 'accuracy-good' : accuracy <= 15 ? 'accuracy-mid' : 'accuracy-poor');
 
   if (!liveMarker) {
     const el = document.createElement('div');
@@ -497,244 +628,440 @@ function onFix(pos){
   } else {
     liveMarker.setLngLat([longitude, latitude]);
   }
-
   if (styleReady) {
     map.getSource('accuracy').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [longitude, latitude] }, properties: {} });
     map.setPaintProperty('accuracy-fill', 'circle-radius', metersToPixelRadiusExpr(accuracy, latitude));
   }
-
-  if (!centered) {
-    map.jumpTo({ center: [longitude, latitude], zoom: 19 });
-    centered = true;
-  }
+  if (!centered) { map.jumpTo({ center: [longitude, latitude], zoom: 19 }); centered = true; }
+  updateUI();
 }
-
 function onFixError(err){
-  document.getElementById('fixState').textContent = 'error: ' + err.message;
+  document.getElementById('fixState').textContent = 'error';
+  // file:// often blocks geolocation; Tap Map still works.
+  toast('GPS unavailable — use Tap Map, or serve over https/localhost', true);
 }
 
-// ---------- boundary building ----------
-function rebuildPointMarkers(){
-  ptMarkers.forEach(m => m.remove());
-  ptMarkers = [];
-  points.forEach((p, i) => {
-    const el = document.createElement('div');
-    el.style.cssText = `width:20px;height:20px;border-radius:50%;background:${p.manual ? 'var(--manual)' : 'var(--safety)'};border:2px solid #0d130a;color:#0d130a;font:700 11px sans-serif;display:flex;align-items:center;justify-content:center`;
-    el.textContent = i + 1;
-    const marker = new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map);
-    ptMarkers.push(marker);
-  });
-}
-
-function redrawBoundary(){
-  if (!styleReady) return;
-  const coords = points.map(p => [p.lon, p.lat]);
-  if (closed && points.length >= 3) {
-    const ring = coords.concat([coords[0]]);
-    map.getSource('boundary-line').setData(emptyFC());
-    map.getSource('boundary-fill').setData({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: {} });
-  } else if (points.length >= 2) {
-    map.getSource('boundary-fill').setData(emptyFC());
-    map.getSource('boundary-line').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} });
-  } else {
-    map.getSource('boundary-line').setData(emptyFC());
-    map.getSource('boundary-fill').setData(emptyFC());
-  }
-}
-
-function refreshPointList(){
-  const el = document.getElementById('pointList');
-  if (points.length === 0) {
-    el.textContent = 'No points yet.';
-    return;
-  }
-  el.innerHTML = points.map((p,i) =>
-    `<div class="pt">#${i+1}  ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}  ${p.manual ? '(manual)' : '(±' + p.acc.toFixed(1) + 'm)'}</div>`
-  ).join('');
-  el.scrollTop = el.scrollHeight;
-}
-
-function updateButtons(){
-  document.getElementById('ptCount').textContent = points.length;
-  document.getElementById('ptCountInline').textContent = points.length;
-  document.getElementById('undoBtn').disabled = points.length === 0 || closed;
-  document.getElementById('resetBtn').disabled = points.length === 0;
-  document.getElementById('closeBtn').disabled = points.length < 3 || closed;
-  document.getElementById('exportGeoBtn').disabled = !closed;
-  document.getElementById('exportLocalBtn').disabled = !closed;
-  document.getElementById('addBtn').disabled = closed || !currentFix || mode !== 'gps';
-  document.getElementById('rotateInput').disabled = !closed;
-  document.getElementById('autoAlignBtn').disabled = !closed || points.length < 2;
-  document.getElementById('resetRotBtn').disabled = !closed;
-  updateArea();
-}
-
-// local ENU (meters) using first point as origin — fine for small-area geofences
+// ---------- local ENU projection + rotation ----------
 function toLocalXY(lat, lon, originLat, originLon){
   const R = 6378137; // WGS84 equatorial radius, m
   const dLat = (lat - originLat) * Math.PI / 180;
   const dLon = (lon - originLon) * Math.PI / 180;
-  const x = dLon * R * Math.cos(originLat * Math.PI / 180); // east, m
-  const y = dLat * R;                                        // north, m
-  return { x, y };
+  return { x: dLon * R * Math.cos(originLat * Math.PI / 180), y: dLat * R };
 }
-
-// rotate a local x,y pair by `deg` degrees counter-clockwise (export-axis rotation only)
 function rotatePoint(x, y, deg){
-  const rad = deg * Math.PI / 180;
-  const cos = Math.cos(rad), sin = Math.sin(rad);
-  return { x: x * cos - y * sin, y: x * sin + y * cos };
+  const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  return { x: x * c - y * s, y: x * s + y * c };
 }
-
+// ring in local metric frame (rotated), for a feature's points
+function ringXY(feat, origin, rotDeg){
+  return feat.points.map(p => {
+    const l = toLocalXY(p.lat, p.lon, origin.lat, origin.lon);
+    return rotatePoint(l.x, l.y, rotDeg);
+  });
+}
 function shoelaceArea(xy){
   let a = 0;
   for (let i = 0; i < xy.length; i++){
-    const [x1,y1] = xy[i];
-    const [x2,y2] = xy[(i+1) % xy.length];
-    a += (x1 * y2 - x2 * y1);
+    const p = xy[i], q = xy[(i + 1) % xy.length];
+    a += (p.x * q.y - q.x * p.y);
   }
   return Math.abs(a) / 2;
 }
 
-function updateArea(){
-  const el = document.getElementById('areaVal');
-  if (!closed || points.length < 3) { el.textContent = '—'; return; }
-  const origin = points[0];
-  const xy = points.map(p => {
-    const l = toLocalXY(p.lat, p.lon, origin.lat, origin.lon);
-    return [l.x, l.y];
-  });
-  const sqm = shoelaceArea(xy);
-  const acres = sqm / 4046.86;
-  el.textContent = sqm.toFixed(0) + ' m² (' + acres.toFixed(2) + ' acre)';
+// ---------- geometry validation (mirrors the planner's intent) ----------
+function segInt(a, b, c, d){
+  // proper intersection of segments ab and cd (excludes shared endpoints)
+  function o(p, q, r){ return (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y); }
+  function near(p, q){ return Math.abs(p.x - q.x) < 1e-9 && Math.abs(p.y - q.y) < 1e-9; }
+  if (near(a, c) || near(a, d) || near(b, c) || near(b, d)) return false;
+  const o1 = Math.sign(o(a, b, c)), o2 = Math.sign(o(a, b, d)), o3 = Math.sign(o(c, d, a)), o4 = Math.sign(o(c, d, b));
+  return o1 !== o2 && o3 !== o4;
+}
+function ringSelfIntersects(xy){
+  const n = xy.length;
+  if (n < 4) return false;
+  for (let i = 0; i < n; i++){
+    for (let j = i + 1; j < n; j++){
+      if (i === j) continue;
+      // skip adjacent edges (share a vertex)
+      if (i === (j + 1) % n || j === (i + 1) % n) continue;
+      if (segInt(xy[i], xy[(i + 1) % n], xy[j], xy[(j + 1) % n])) return true;
+    }
+  }
+  return false;
+}
+function pointInRing(p, ring){
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++){
+    const a = ring[i], b = ring[j];
+    if (((a.y > p.y) !== (b.y > p.y)) && (p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)) inside = !inside;
+  }
+  return inside;
+}
+function ringInsideRing(inner, outer){
+  for (const p of inner) if (!pointInRing(p, outer)) return false;
+  for (let i = 0; i < inner.length; i++){
+    const a = inner[i], b = inner[(i + 1) % inner.length];
+    for (let j = 0; j < outer.length; j++){
+      if (segInt(a, b, outer[j], outer[(j + 1) % outer.length])) return false;
+    }
+  }
+  return true;
 }
 
-// ---------- button handlers ----------
-document.getElementById('addBtn').addEventListener('click', () => {
-  if (!currentFix || closed || mode !== 'gps') return;
-  const p = { lat: currentFix.lat, lon: currentFix.lon, acc: currentFix.acc, manual: false, t: new Date().toISOString() };
-  points.push(p);
-  rebuildPointMarkers();
-  redrawBoundary();
+// Returns { errors:[], warnings:[], areaM2, closedZones } for the current data.
+function validate(){
+  const errors = [], warnings = [];
+  const origin = boundary.points[0];
+  const rotDeg = parseFloat(document.getElementById('rotateInput').value) || 0;
+  let areaM2 = 0, outerXY = null;
+
+  if (!boundary.closed) return { errors, warnings, areaM2, ok: false, ready: false };
+
+  if (boundary.points.length < 3) { errors.push('Boundary needs at least 3 corners.'); }
+  else {
+    outerXY = ringXY(boundary, origin, rotDeg);
+    areaM2 = shoelaceArea(outerXY);
+    if (ringSelfIntersects(outerXY)) errors.push('Boundary edges cross themselves — reorder or move a corner.');
+    if (areaM2 < 4) warnings.push('Boundary area is under 4 m² — check the corners.');
+  }
+
+  // accuracy warning across all captured (non-manual) points
+  const accs = [boundary, ...zones].flatMap(f => f.points).filter(p => !p.manual && p.acc != null).map(p => p.acc);
+  const worst = accs.length ? Math.max(...accs) : 0;
+  if (worst > 15) warnings.push('Some points were captured at ±' + worst.toFixed(0) + ' m. Re-capture with RTK for the real run.');
+
+  zones.forEach((z, i) => {
+    if (!z.closed) { errors.push('Zone ' + (i + 1) + ' is still open — close it or delete it.'); return; }
+    if (z.points.length < 3) { errors.push('Zone ' + (i + 1) + ' needs at least 3 corners.'); return; }
+    if (!outerXY) return;
+    const zXY = ringXY(z, origin, rotDeg);
+    if (ringSelfIntersects(zXY)) errors.push('Zone ' + (i + 1) + ' edges cross themselves.');
+    if (!ringInsideRing(zXY, outerXY)) errors.push('Zone ' + (i + 1) + ' is not fully inside the boundary.');
+  });
+
+  // overlap between zones is allowed by Shapely but wasteful — warn only
+  for (let i = 0; i < zones.length && outerXY; i++){
+    for (let j = i + 1; j < zones.length; j++){
+      if (!zones[i].closed || !zones[j].closed) continue;
+      const A = ringXY(zones[i], origin, rotDeg), B = ringXY(zones[j], origin, rotDeg);
+      const touch = A.some(p => pointInRing(p, B)) || B.some(p => pointInRing(p, A));
+      if (touch) { warnings.push('Zones ' + (i + 1) + ' and ' + (j + 1) + ' overlap — consider merging them.'); }
+    }
+  }
+
+  const ready = errors.length === 0 && boundary.closed && zones.every(z => z.closed);
+  return { errors, warnings, areaM2, ok: errors.length === 0, ready };
+}
+
+// ---------- drawing ----------
+function rebuildVertexMarkers(){
+  vertexMarkers.forEach(m => m.remove());
+  vertexMarkers = [];
+  const feat = openFeature();
+  if (!feat) return;
+  const color = target === 'zone' ? 'var(--danger)' : 'var(--safety)';
+  feat.points.forEach((p, i) => {
+    const el = document.createElement('div');
+    const bg = p.manual ? 'var(--manual)' : color;
+    el.style.cssText = `width:20px;height:20px;border-radius:50%;background:${bg};border:2px solid #0d130a;color:#0d130a;font:700 11px sans-serif;display:flex;align-items:center;justify-content:center`;
+    el.textContent = i + 1;
+    vertexMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map));
+  });
+}
+function ringCoords(feat){ return feat.points.map(p => [p.lon, p.lat]); }
+
+function redraw(){
+  if (!styleReady) return;
+
+  // closed boundary
+  if (boundary.closed && boundary.points.length >= 3) {
+    const r = ringCoords(boundary); r.push(r[0]);
+    map.getSource('boundary-fill').setData({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [r] }, properties: {} });
+  } else {
+    map.getSource('boundary-fill').setData(emptyFC());
+  }
+
+  // closed zones
+  const zf = zones.filter(z => z.closed && z.points.length >= 3).map(z => {
+    const r = ringCoords(z); r.push(r[0]);
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [r] }, properties: {} };
+  });
+  map.getSource('zones-fill').setData({ type: 'FeatureCollection', features: zf });
+
+  // in-progress open feature as a dashed line
+  const feat = openFeature();
+  if (feat && feat.points.length >= 1) {
+    map.getSource('active-line').setData({ type: 'Feature', properties: { kind: target === 'zone' ? 'zone' : 'boundary' }, geometry: { type: 'LineString', coordinates: ringCoords(feat) } });
+  } else {
+    map.getSource('active-line').setData(emptyFC());
+  }
+  rebuildVertexMarkers();
+}
+
+// ---------- feature chip bar ----------
+function renderFeatureBar(){
+  const bar = document.getElementById('featureBar');
+  bar.innerHTML = '';
+
+  const bChip = document.createElement('button');
+  bChip.className = 'chip boundary' + (target === 'boundary' ? ' active' : '') + (boundary.closed ? ' done' : '');
+  bChip.innerHTML = `<span class="cdot"></span>Boundary${boundary.closed ? ' ✓' : ''}`;
+  bChip.addEventListener('click', () => { target = 'boundary'; refreshAll(); });
+  bar.appendChild(bChip);
+
+  zones.forEach((z, i) => {
+    const c = document.createElement('button');
+    c.className = 'chip zone' + (target === 'zone' && activeZone === i ? ' active' : '') + (z.closed ? ' done' : '');
+    c.innerHTML = `<span class="cdot"></span>Zone ${i + 1}${z.closed ? ' ✓' : ''} <span class="x" title="Delete">✕</span>`;
+    c.addEventListener('click', (e) => {
+      if (e.target.classList.contains('x')) {
+        if (confirm('Delete zone ' + (i + 1) + '?')) { zones.splice(i, 1); if (activeZone >= zones.length) activeZone = zones.length - 1; target = 'boundary'; refreshAll(); }
+        return;
+      }
+      target = 'zone'; activeZone = i; refreshAll();
+    });
+    bar.appendChild(c);
+  });
+
+  const add = document.createElement('button');
+  add.className = 'chip-add';
+  add.id = 'addZoneBtn';
+  add.textContent = '+ No-go zone';
+  add.disabled = !boundary.closed || openFeature() !== null;
+  add.addEventListener('click', () => {
+    zones.push({ points: [], closed: false });
+    activeZone = zones.length - 1; target = 'zone';
+    refreshAll();
+    toast('Outline no-go zone ' + zones.length);
+  });
+  bar.appendChild(add);
+}
+
+// ---------- UI state ----------
+function updateUI(){
+  const feat = openFeature();
+  const feathas = feat ? feat.points.length : 0;
+
+  // counts
+  document.getElementById('ptCountInline').textContent = [boundary, ...zones].reduce((n, f) => n + f.points.length, 0);
+  document.getElementById('zoneVal').textContent = zones.length;
+
+  // primary / close buttons
+  document.getElementById('addBtn').disabled = !feat || mode !== 'gps' || !currentFix;
+  document.getElementById('undoBtn').disabled = !feat || feathas === 0;
+  document.getElementById('resetBtn').disabled = boundary.points.length === 0 && zones.length === 0;
+
+  const closeBtn = document.getElementById('closeBtn');
+  closeBtn.textContent = target === 'zone' ? 'Close zone' : 'Close boundary';
+  closeBtn.disabled = !feat || feathas < 3;
+
+  // validation + exports
+  const v = validate();
+  const box = document.getElementById('validation');
+  if (!boundary.closed) {
+    box.className = 'validation';
+    box.textContent = boundary.points.length < 3
+      ? 'Draw at least 3 boundary corners, then Close boundary.'
+      : 'Close the boundary to validate and export.';
+  } else if (v.errors.length) {
+    box.className = 'validation err';
+    box.innerHTML = 'Fix before export:<ul>' + v.errors.map(e => '<li>' + e + '</li>').join('') + '</ul>';
+  } else if (v.warnings.length) {
+    box.className = 'validation warn';
+    box.innerHTML = 'Ready, with notes:<ul>' + v.warnings.map(w => '<li>' + w + '</li>').join('') + '</ul>';
+  } else {
+    box.className = 'validation ok';
+    box.textContent = '✓ Valid: boundary + ' + zones.length + ' zone(s). Ready to export.';
+  }
+
+  const enableExports = v.ready;
+  document.getElementById('exportYamlBtn').disabled = !enableExports;
+  document.getElementById('exportGeoBtn').disabled = !enableExports;
+  document.getElementById('exportLocalBtn').disabled = !enableExports;
+
+  // rotation controls
+  document.getElementById('rotateInput').disabled = !boundary.closed;
+  document.getElementById('autoAlignBtn').disabled = !boundary.closed || boundary.points.length < 2;
+  document.getElementById('resetRotBtn').disabled = !boundary.closed;
+
+  // area
+  const areaEl = document.getElementById('areaVal');
+  if (boundary.closed && boundary.points.length >= 3) {
+    const acres = v.areaM2 / 4046.86;
+    areaEl.textContent = v.areaM2.toFixed(0) + ' m² (' + acres.toFixed(2) + ' ac)';
+  } else areaEl.textContent = '—';
+
   refreshPointList();
-  updateButtons();
-  toast('Point ' + points.length + ' added (±' + p.acc.toFixed(1) + 'm)');
+}
+
+function refreshPointList(){
+  const el = document.getElementById('pointList');
+  const feats = [{ f: boundary, name: 'Boundary', cls: 'hd' }, ...zones.map((z, i) => ({ f: z, name: 'Zone ' + (i + 1), cls: 'hd zone' }))];
+  const any = feats.some(x => x.f.points.length);
+  if (!any) { el.textContent = 'No points yet.'; return; }
+  el.innerHTML = feats.map(x => {
+    if (!x.f.points.length) return '';
+    const head = `<div class="${x.cls}">${x.name}${x.f.closed ? ' (closed)' : ''}</div>`;
+    const rows = x.f.points.map((p, i) =>
+      `<div class="pt">#${i + 1}  ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}  ${p.manual ? '(manual)' : '(±' + p.acc.toFixed(1) + 'm)'}</div>`
+    ).join('');
+    return head + rows;
+  }).join('');
+}
+
+function refreshAll(){ renderFeatureBar(); redraw(); updateUI(); }
+
+// ---------- action buttons ----------
+document.getElementById('addBtn').addEventListener('click', () => {
+  const feat = openFeature();
+  if (!feat || mode !== 'gps' || !currentFix) return;
+  feat.points.push({ lat: currentFix.lat, lon: currentFix.lon, acc: currentFix.acc, manual: false, t: new Date().toISOString() });
+  refreshAll();
+  const warn = currentFix.acc > 15;
+  toast(feat.points.length + ' pts on ' + targetLabel() + ' (±' + currentFix.acc.toFixed(1) + 'm)', warn);
 });
 
 document.getElementById('undoBtn').addEventListener('click', () => {
-  if (points.length === 0 || closed) return;
-  points.pop();
-  rebuildPointMarkers();
-  redrawBoundary();
-  refreshPointList();
-  updateButtons();
+  const feat = openFeature();
+  if (!feat || feat.points.length === 0) return;
+  feat.points.pop();
+  refreshAll();
 });
 
 document.getElementById('resetBtn').addEventListener('click', () => {
-  if (!confirm('Clear all boundary points?')) return;
-  points = [];
-  closed = false;
+  if (!confirm('Clear the boundary and all zones?')) return;
+  boundary = { points: [], closed: false };
+  zones = []; target = 'boundary'; activeZone = -1;
   document.getElementById('rotateInput').value = 0;
-  rebuildPointMarkers();
-  redrawBoundary();
-  refreshPointList();
-  updateButtons();
+  refreshAll();
 });
 
 document.getElementById('closeBtn').addEventListener('click', () => {
-  if (points.length < 3) return;
-  closed = true;
-  redrawBoundary();
-  updateButtons();
-  toast('Boundary closed — ' + points.length + ' points');
+  const feat = openFeature();
+  if (!feat || feat.points.length < 3) return;
+
+  // validate a zone against the boundary at close time so the user gets immediate feedback
+  if (target === 'zone') {
+    const origin = boundary.points[0];
+    const rotDeg = parseFloat(document.getElementById('rotateInput').value) || 0;
+    const zXY = ringXY(feat, origin, rotDeg);
+    const outerXY = ringXY(boundary, origin, rotDeg);
+    if (ringSelfIntersects(zXY)) { toast('Zone edges cross — fix before closing', true); return; }
+    if (!ringInsideRing(zXY, outerXY)) { toast('Zone must sit fully inside the boundary', true); return; }
+  } else {
+    const outerXY = ringXY(feat, feat.points[0], 0);
+    if (ringSelfIntersects(outerXY)) { toast('Boundary edges cross — fix before closing', true); return; }
+  }
+
+  feat.closed = true;
+  refreshAll();
+  toast((target === 'zone' ? 'Zone ' + (activeZone + 1) : 'Boundary') + ' closed');
 });
 
-// ---------- export-axis rotation (data only — does not touch the map view) ----------
+// ---------- mowing-direction (export-axis) rotation ----------
 document.getElementById('autoAlignBtn').addEventListener('click', () => {
-  if (!closed || points.length < 2) return;
-  const origin = points[0];
-  const xy = points.map(p => toLocalXY(p.lat, p.lon, origin.lat, origin.lon));
+  if (!boundary.closed || boundary.points.length < 2) return;
+  const origin = boundary.points[0];
+  const xy = boundary.points.map(p => toLocalXY(p.lat, p.lon, origin.lat, origin.lon));
   let maxLen = -1, bestAngle = 0, bestEdge = 0;
   for (let i = 0; i < xy.length; i++){
-    const a = xy[i], b = xy[(i+1) % xy.length];
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const len = Math.hypot(dx, dy);
-    if (len > maxLen){ maxLen = len; bestAngle = Math.atan2(dy, dx) * 180 / Math.PI; bestEdge = i; }
+    const a = xy[i], b = xy[(i + 1) % xy.length];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > maxLen){ maxLen = len; bestAngle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI; bestEdge = i; }
   }
   const rot = -bestAngle;
   document.getElementById('rotateInput').value = rot.toFixed(1);
-  const nextIdx = (bestEdge + 1) % points.length;
-  toast('Aligned to edge #' + (bestEdge+1) + '→#' + (nextIdx+1) + ' (' + rot.toFixed(1) + '°)');
+  refreshAll();
+  toast('Aligned to longest edge #' + (bestEdge + 1) + ' (' + rot.toFixed(1) + '°)');
 });
+document.getElementById('resetRotBtn').addEventListener('click', () => { document.getElementById('rotateInput').value = 0; refreshAll(); });
+document.getElementById('rotateInput').addEventListener('input', () => refreshAll());
 
-document.getElementById('resetRotBtn').addEventListener('click', () => {
-  document.getElementById('rotateInput').value = 0;
-});
-
+// ---------- exports ----------
 function downloadFile(filename, content, mime){
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
+// lawn.yaml — the exact shape the ZTR coverage planner reads (outer + holes, map-frame metres).
+document.getElementById('exportYamlBtn').addEventListener('click', () => {
+  const v = validate();
+  if (!v.ready) return;
+  const origin = boundary.points[0];
+  const rotDeg = parseFloat(document.getElementById('rotateInput').value) || 0;
+  const round = n => Math.round(n * 1000) / 1000;
+
+  const outerXY = ringXY(boundary, origin, rotDeg).map(p => [round(p.x), round(p.y)]);
+  const holesXY = zones.filter(z => z.closed).map(z => ringXY(z, origin, rotDeg).map(p => [round(p.x), round(p.y)]));
+
+  const fmtRing = ring => '[' + ring.map(c => '[' + c[0] + ', ' + c[1] + ']').join(', ') + ']';
+  let y = '';
+  y += '# ZTR lawn geofence — generated by Geofence Collector\n';
+  y += '# Frame: local ENU (flat-earth), x=east / y=north metres.\n';
+  y += '# Datum origin (boundary point #1): lat=' + origin.lat.toFixed(7) + ' lon=' + origin.lon.toFixed(7) + '\n';
+  y += '# Export axis rotation: ' + rotDeg.toFixed(2) + ' deg CCW. Area: ' + v.areaM2.toFixed(1) + ' m^2.\n';
+  y += '# Set the robot map-frame origin to this datum so coordinates line up.\n';
+  y += 'outer: ' + fmtRing(outerXY) + '\n';
+  if (holesXY.length) {
+    y += 'holes:\n';
+    holesXY.forEach(h => { y += '  - ' + fmtRing(h) + '\n'; });
+  } else {
+    y += 'holes: []\n';
+  }
+  downloadFile('lawn.yaml', y, 'text/yaml');
+  toast('lawn.yaml exported — drop into the planner');
+});
+
+// GeoJSON — true geographic coordinates (never rotated). Boundary + holes in one Polygon.
 document.getElementById('exportGeoBtn').addEventListener('click', () => {
-  if (!closed) return;
-  const ring = points.map(p => [p.lon, p.lat]); // GeoJSON is [lon, lat] — always real geographic coords, never rotated
-  ring.push(ring[0]); // close the ring
+  const v = validate();
+  if (!v.ready) return;
+  const outer = ringCoords(boundary); outer.push(outer[0]);
+  const rings = [outer];
+  zones.filter(z => z.closed).forEach(z => { const r = ringCoords(z); r.push(r[0]); rings.push(r); });
   const geojson = {
     type: 'FeatureCollection',
     features: [{
       type: 'Feature',
-      properties: {
-        name: 'ztr_geofence',
-        collected: new Date().toISOString(),
-        source: 'phone_gps_test',
-        point_count: points.length
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [ring]
-      }
+      properties: { name: 'ztr_geofence', collected: new Date().toISOString(), source: 'geofence_collector', zones: zones.length },
+      geometry: { type: 'Polygon', coordinates: rings }
     }]
   };
   downloadFile('ztr_geofence.geojson', JSON.stringify(geojson, null, 2), 'application/geo+json');
   toast('GeoJSON exported');
 });
 
+// Local XY — metric frame with per-point provenance, boundary + zones separated.
 document.getElementById('exportLocalBtn').addEventListener('click', () => {
-  if (!closed) return;
-  const origin = points[0];
+  const v = validate();
+  if (!v.ready) return;
+  const origin = boundary.points[0];
   const rotDeg = parseFloat(document.getElementById('rotateInput').value) || 0;
-  const rows = points.map((p, i) => {
+  const rows = feat => feat.points.map((p, i) => {
     const l = toLocalXY(p.lat, p.lon, origin.lat, origin.lon);
     const r = rotatePoint(l.x, l.y, rotDeg);
-    return {
-      index: i,
-      lat: p.lat,
-      lon: p.lon,
-      x_m: r.x,
-      y_m: r.y,
-      accuracy_m: p.manual ? null : p.acc,
-      manual: !!p.manual
-    };
+    return { index: i, lat: p.lat, lon: p.lon, x_m: r.x, y_m: r.y, accuracy_m: p.manual ? null : p.acc, manual: !!p.manual };
   });
   const payload = {
-    origin: { lat: origin.lat, lon: origin.lon, note: 'local ENU origin (point #1), x=east/y=north meters, then rotated by rotation_deg (CCW)' },
     frame: 'local_enu_flat_earth_approx',
+    origin: { lat: origin.lat, lon: origin.lon, note: 'ENU origin = boundary point #1; x=east, y=north (m); then rotated by rotation_deg CCW' },
     rotation_deg: rotDeg,
-    points: rows
+    area_m2: v.areaM2,
+    outer: rows(boundary),
+    holes: zones.filter(z => z.closed).map(rows)
   };
   downloadFile('ztr_geofence_local_xy.json', JSON.stringify(payload, null, 2), 'application/json');
   toast('Local XY exported (rot ' + rotDeg.toFixed(1) + '°)');
 });
 
+// ---------- boot ----------
 setMode('gps');
+refreshAll();
 </script>
 </body>
 </html>
