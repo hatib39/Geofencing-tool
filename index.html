@@ -490,7 +490,11 @@ const style = {
       type: 'raster',
       tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
-      maxzoom: 22,
+      // Deepest zoom Esri has native imagery for in most areas. Beyond this,
+      // MapLibre overzooms (scales the last real tile) instead of requesting
+      // missing tiles that come back as grey "Map data not available".
+      // If your area has sharper imagery, try bumping this to 20.
+      maxzoom: 19,
       attribution: 'Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community'
     },
     street: {
@@ -519,7 +523,7 @@ map = new maplibregl.Map({
   bearing: 0,
   pitch: 0,
   maxPitch: 0,     // strict top-down — rotation only, no tilt, for accurate corner placement
-  maxZoom: 22,
+  maxZoom: 21,     // a little past native imagery (overzoomed/scaled) for fine corner placement
   attributionControl: { compact: true }
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true, visualizePitch: false }), 'top-right');
